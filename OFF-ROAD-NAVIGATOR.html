@@ -1056,9 +1056,15 @@ ${trkpts}
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('service-worker.js')
-                    .then(reg => console.log('SW registered'))
-                    .catch(err => console.log('SW registration failed:', err));
+                // Unregister stale service workers first, then register fresh
+                navigator.serviceWorker.getRegistrations().then(regs => {
+                    const unregPromises = regs.map(r => r.unregister());
+                    return Promise.all(unregPromises);
+                }).then(() => {
+                    return navigator.serviceWorker.register('service-worker.js');
+                }).then(reg => {
+                    console.log('SW registered fresh');
+                }).catch(err => console.log('SW error:', err));
             });
         }
     </script>

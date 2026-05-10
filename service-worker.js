@@ -1,4 +1,4 @@
-const CACHE = 'offroad-v3';
+const CACHE = 'offroad-v4';
 
 self.addEventListener('install', e => {
     self.skipWaiting();
