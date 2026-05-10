@@ -239,22 +239,131 @@
             font-weight: 600;
         }
 
+        /* ── Mobiele floating overlay controls ── */
+        .mob-bottom-bar {
+            display: none;
+        }
+
+        .mob-stats {
+            display: none;
+        }
+
         @media (max-width: 768px) {
-            .container {
+            /* Header compact */
+            header { padding: 0.6rem 1rem; }
+            h1 { font-size: 1.2rem; margin-bottom: 0; }
+            .subtitle { display: none; }
+
+            /* Sidebar verborgen — kaart fullscreen */
+            .sidebar { display: none; }
+
+            /* Tabs in header verplaatst via JS */
+            .tabs { display: none; }
+
+            /* Container + kaart volledig scherm */
+            .container { position: relative; }
+
+            /* Bottom navigation bar */
+            .mob-bottom-bar {
+                display: flex;
+                position: fixed;
+                bottom: 0; left: 0; right: 0;
+                height: 60px;
+                background: rgba(19, 27, 46, 0.95);
+                border-top: 1px solid rgba(232,168,56,0.3);
+                z-index: 1000;
+                backdrop-filter: blur(8px);
+            }
+
+            .mob-tab-btn {
+                flex: 1;
+                border: none;
+                background: transparent;
+                color: var(--text-secondary);
+                font-family: var(--font-sans);
+                font-size: 0.8rem;
+                font-weight: 600;
+                cursor: pointer;
+                display: flex;
                 flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 2px;
+                border-top: 3px solid transparent;
+                transition: all 0.2s;
             }
 
-            .sidebar {
-                width: 100%;
-                max-height: 150px;
-                border-right: none;
-                border-bottom: 1px solid rgba(232, 168, 56, 0.2);
+            .mob-tab-btn.active {
+                color: var(--accent-gold);
+                border-top-color: var(--accent-gold);
+                background: rgba(232,168,56,0.08);
             }
 
-            h1 { font-size: 1.4rem; }
+            /* Floating action buttons op de kaart */
+            .mob-fab-bar {
+                position: fixed;
+                bottom: 70px;
+                right: 12px;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                z-index: 999;
+            }
 
-            .tabs {
-                flex-wrap: wrap;
+            .mob-fab {
+                width: 48px;
+                height: 48px;
+                border-radius: 50%;
+                border: none;
+                background: var(--accent-gold);
+                color: var(--primary);
+                font-size: 1.2rem;
+                cursor: pointer;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: all 0.2s;
+            }
+
+            .mob-fab.active {
+                background: var(--accent-orange);
+            }
+
+            .mob-fab.danger { background: #e74c3c; color: white; }
+
+            /* Stats overlay linksonder */
+            .mob-stats {
+                display: block;
+                position: fixed;
+                bottom: 70px;
+                left: 8px;
+                background: rgba(11,17,32,0.88);
+                border: 1px solid var(--accent-gold);
+                border-radius: 8px;
+                padding: 0.5rem 0.75rem;
+                z-index: 999;
+                font-size: 0.8rem;
+                backdrop-filter: blur(6px);
+                min-width: 150px;
+            }
+
+            .mob-stat-row {
+                display: flex;
+                justify-content: space-between;
+                gap: 0.75rem;
+                margin-bottom: 2px;
+            }
+
+            .mob-stat-label { color: var(--text-secondary); }
+            .mob-stat-val { color: var(--accent-teal); font-weight: 700; }
+
+            /* Kaart vult alles op */
+            #mapDesktop, #mapMobile {
+                position: fixed !important;
+                top: 52px; left: 0; right: 0; bottom: 60px;
+                width: 100% !important;
+                height: auto !important;
             }
         }
     </style>
@@ -787,7 +896,134 @@ ${trkpts}
                     devEl.style.color = 'var(--accent-orange)';
                 }
             }
+            updateMobileTrackingStats(speed, deviation);
         }
+    </script>
+
+    <!-- Mobiele bottom nav -->
+    <div class="mob-bottom-bar" id="mobBottomBar">
+        <button class="mob-tab-btn active" id="mobBtnPlanning" data-mobtab="planning">
+            <span>📍</span><span>Planning</span>
+        </button>
+        <button class="mob-tab-btn" id="mobBtnTracking" data-mobtab="tracking">
+            <span>🎯</span><span>Tracking</span>
+        </button>
+    </div>
+
+    <!-- Mobiele floating action buttons (alleen zichtbaar op mobiel) -->
+    <div class="mob-fab-bar" id="mobFabBar" style="display:none;">
+        <!-- Planning FABs -->
+        <div id="mobFabsPlanning">
+            <button class="mob-fab" id="mobBtnSave" title="Opslaan">💾</button>
+            <button class="mob-fab" id="mobBtnLoad" title="Laden">📂</button>
+            <button class="mob-fab danger" id="mobBtnClear" title="Wissen">🗑️</button>
+        </div>
+        <!-- Tracking FABs -->
+        <div id="mobFabsTracking" style="display:none;">
+            <button class="mob-fab active" id="mobBtnStart" title="Start GPS">🚀</button>
+            <button class="mob-fab danger" id="mobBtnStop" style="display:none;" title="Stop GPS">⏹️</button>
+        </div>
+    </div>
+
+    <!-- Mobiele stats overlay -->
+    <div class="mob-stats" id="mobStats" style="display:none;">
+        <div class="mob-stat-row">
+            <span class="mob-stat-label">Afstand:</span>
+            <span class="mob-stat-val" id="mobStatDist">0 km</span>
+        </div>
+        <div class="mob-stat-row">
+            <span class="mob-stat-label">Snelheid:</span>
+            <span class="mob-stat-val" id="mobStatSpeed">0 km/h</span>
+        </div>
+        <div class="mob-stat-row" id="mobDeviationRow" style="display:none;">
+            <span class="mob-stat-label">Afwijking:</span>
+            <span class="mob-stat-val" id="mobStatDev">-</span>
+        </div>
+    </div>
+
+    <script>
+        const isMobile = () => window.innerWidth <= 768;
+
+        function initMobileUI() {
+            if (!isMobile()) return;
+
+            // FABs en stats tonen
+            document.getElementById('mobFabBar').style.display = 'flex';
+
+            // Bottom nav events
+            document.querySelectorAll('.mob-tab-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const tab = this.getAttribute('data-mobtab');
+                    switchTab(tab);
+                    document.querySelectorAll('.mob-tab-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+
+                    // Wissel FAB groep
+                    document.getElementById('mobFabsPlanning').style.display = tab === 'planning' ? 'flex' : 'none';
+                    document.getElementById('mobFabsTracking').style.display = tab === 'tracking' ? 'flex' : 'none';
+                    document.getElementById('mobStats').style.display = tab === 'tracking' ? 'block' : 'none';
+
+                    // Ververs kaartgrootte na switch
+                    setTimeout(() => {
+                        appState.mapDesktop.invalidateSize();
+                        appState.mapMobile.invalidateSize();
+                    }, 200);
+                });
+            });
+
+            // Planning FAB events
+            document.getElementById('mobBtnSave').addEventListener('click', saveTrip);
+            document.getElementById('mobBtnLoad').addEventListener('click', showLoadDialog);
+            document.getElementById('mobBtnClear').addEventListener('click', () => {
+                appState.drawnItems.clearLayers();
+                appState.planningRoute = null;
+                updateRouteStats();
+            });
+
+            // Tracking FAB events
+            document.getElementById('mobBtnStart').addEventListener('click', () => {
+                startTracking();
+                document.getElementById('mobBtnStart').style.display = 'none';
+                document.getElementById('mobBtnStop').style.display = 'flex';
+                document.getElementById('mobDeviationRow').style.display = appState.planningRoute ? 'flex' : 'none';
+            });
+            document.getElementById('mobBtnStop').addEventListener('click', () => {
+                stopTracking();
+                document.getElementById('mobBtnStart').style.display = 'flex';
+                document.getElementById('mobBtnStop').style.display = 'none';
+            });
+        }
+
+        function updateMobileTrackingStats(speed, deviation) {
+            if (!isMobile()) return;
+            document.getElementById('mobStats').style.display = 'block';
+            if (appState.gpsTrail.length > 1) {
+                try {
+                    const d = turf.length(turf.lineString(appState.gpsTrail), { units: 'kilometers' });
+                    document.getElementById('mobStatDist').textContent = d.toFixed(2) + ' km';
+                } catch(e) {}
+            }
+            document.getElementById('mobStatSpeed').textContent = Math.round(speed * 3.6) + ' km/h';
+            if (deviation !== null) {
+                const devEl = document.getElementById('mobStatDev');
+                document.getElementById('mobDeviationRow').style.display = 'flex';
+                if (deviation < 50) {
+                    devEl.textContent = Math.round(deviation) + ' m ✓';
+                    devEl.style.color = 'var(--accent-teal)';
+                } else if (deviation < 200) {
+                    devEl.textContent = Math.round(deviation) + ' m ⚠';
+                    devEl.style.color = 'var(--accent-gold)';
+                } else {
+                    devEl.textContent = Math.round(deviation) + ' m ✗';
+                    devEl.style.color = 'var(--accent-orange)';
+                }
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', initMobileUI);
+        window.addEventListener('resize', () => {
+            if (isMobile()) initMobileUI();
+        });
     </script>
 
     <!-- PWA Service Worker Registration -->
