@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#2D4A3C">
+    <meta name="description" content="Off-road quad trip planner en GPS tracker">
+    <title>Off-road Navigator — Quad Trip Planner</title>
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect fill='%232D4A3C' width='180' height='180'/><text x='90' y='100' font-size='60' fill='%23E8A838' text-anchor='middle' dominant-baseline='middle' font-weight='bold'>⛰️</text></svg>">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect fill='%232D4A3C' width='180' height='180'/><text x='90' y='100' font-size='60' fill='%23E8A838' text-anchor='middle' dominant-baseline='middle' font-weight='bold'>⛰️</text></svg>">
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet-draw/1.0.4/leaflet.draw.min.css">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --primary: #2D4A3C;
+            --accent-gold: #E8A838;
+            --accent-orange: #FF6B35;
+            --accent-teal: #22D3A7;
+            --bg-dark: #0B1120;
+            --bg-card: #131B2E;
+            --text-primary: #E8ECF4;
+            --text-secondary: #8B95A8;
+            --font-serif: 'DM Serif Display', serif;
+            --font-sans: 'IBM Plex Sans', sans-serif;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            overflow: hidden;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: linear-gradient(135deg, var(--primary) 0%, #1a2f27 100%);
+            padding: 1.2rem;
+            border-bottom: 2px solid var(--accent-gold);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            z-index: 100;
+        }
+
+        h1 {
+            font-family: var(--font-serif);
+            font-size: 1.8rem;
+            color: var(--accent-gold);
+            margin-bottom: 0.25rem;
+        }
+
+        .subtitle {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .container {
+            display: flex;
+            flex: 1;
+            min-height: 0;
+            gap: 0;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 280px;
+            background: var(--bg-card);
+            border-right: 1px solid rgba(232, 168, 56, 0.2);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .content {
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid rgba(232, 168, 56, 0.2);
+            background: var(--bg-card);
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 0.75rem;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            font-family: var(--font-sans);
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+            font-weight: 600;
+        }
+
+        .tab-btn:hover {
+            color: var(--accent-gold);
+            background: rgba(232, 168, 56, 0.05);
+        }
+
+        .tab-btn.active {
+            color: var(--accent-gold);
+            border-bottom-color: var(--accent-gold);
+            background: rgba(232, 168, 56, 0.1);
+        }
+
+        .tab-content {
+            display: none;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .tab-content.active {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            flex: 1;
+        }
+
+        #mapDesktop, #mapMobile {
+            flex: 1;
+            min-height: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, #1a2f27 0%, #0d1920 100%);
+        }
+
+        .leaflet-container {
+            background: linear-gradient(180deg, #1a2f27 0%, #0d1920 100%) !important;
+            font-family: var(--font-sans);
+        }
+
+        .leaflet-control {
+            background: var(--bg-card) !important;
+            border: 1px solid rgba(232, 168, 56, 0.3) !important;
+            border-radius: 4px !important;
+        }
+
+        .leaflet-control-zoom a {
+            background: var(--primary) !important;
+            color: var(--accent-gold) !important;
+            border: none !important;
+        }
+
+        .leaflet-control-zoom a:hover {
+            background: var(--accent-gold) !important;
+            color: var(--primary) !important;
+        }
+
+        .sidebar-section {
+            padding: 1rem;
+            border-bottom: 1px solid rgba(232, 168, 56, 0.1);
+        }
+
+        .sidebar-section h3 {
+            font-family: var(--font-serif);
+            font-size: 1.1rem;
+            color: var(--accent-gold);
+            margin-bottom: 0.75rem;
+        }
+
+        button.primary {
+            background: var(--accent-gold);
+            color: var(--primary);
+            border: none;
+            padding: 0.6rem 1rem;
+            border-radius: 4px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+            margin-bottom: 0.5rem;
+        }
+
+        button.primary:hover {
+            background: var(--accent-orange);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+        }
+
+        button.secondary {
+            background: transparent;
+            color: var(--accent-gold);
+            border: 1px solid var(--accent-gold);
+            padding: 0.5rem 0.75rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+
+        button.secondary:hover {
+            background: rgba(232, 168, 56, 0.1);
+        }
+
+        .stats-panel {
+            background: rgba(232, 168, 56, 0.1);
+            border: 1px solid var(--accent-gold);
+            border-radius: 4px;
+            padding: 0.75rem;
+            margin: 0.5rem 0;
+            font-size: 0.9rem;
+        }
+
+        .stat-line {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+        }
+
+        .stat-value {
+            color: var(--accent-teal);
+            font-weight: 600;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+
+            .sidebar {
+                width: 100%;
+                max-height: 150px;
+                border-right: none;
+                border-bottom: 1px solid rgba(232, 168, 56, 0.2);
+            }
+
+            h1 { font-size: 1.4rem; }
+
+            .tabs {
+                flex-wrap: wrap;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>⛰️ Off-road Navigator</h1>
+        <div class="subtitle">Quad Trip Planner · CFMOTO GForce 520L</div>
+    </header>
+
+    <div class="container">
+        <div class="sidebar">
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="planning">📍 Planning</button>
+                <button class="tab-btn" data-tab="tracking">🎯 Tracking</button>
+            </div>
+
+            <!-- Planning Sidebar -->
+            <div id="sidebar-planning" class="sidebar-content">
+                <div class="sidebar-section">
+                    <h3>Route plannen</h3>
+                    <button class="primary" id="btnDrawRoute">✏️ Route tekenen</button>
+                    <button class="secondary" id="btnClearRoute">Wissen</button>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Zandwegen importeren</h3>
+                    <input type="file" id="fileUpload" accept=".gpx,.geojson,.json" style="display:none">
+                    <button class="primary" id="btnUpload">📁 Upload GPX/GeoJSON</button>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Trip stats</h3>
+                    <div class="stats-panel">
+                        <div class="stat-line">
+                            <span class="stat-label">Route afstand:</span>
+                            <span class="stat-value" id="statRouteDistance">0 km</span>
+                        </div>
+                        <div class="stat-line">
+                            <span class="stat-label">Punten:</span>
+                            <span class="stat-value" id="statRoutePoints">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Trips beheren</h3>
+                    <button class="secondary" id="btnSaveTrip">💾 Opslaan</button>
+                    <button class="secondary" id="btnLoadTrip">📂 Laden</button>
+                    <button class="secondary" id="btnExportGPX">⬇️ Export GPX</button>
+                </div>
+            </div>
+
+            <!-- Tracking Sidebar -->
+            <div id="sidebar-tracking" class="sidebar-content" style="display:none;">
+                <div class="sidebar-section">
+                    <h3>GPS tracking</h3>
+                    <button class="primary" id="btnStartTracking">🚀 Start tracking</button>
+                    <button class="secondary" id="btnStopTracking" style="display:none;">⏹️ Stop</button>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Trip voortgang</h3>
+                    <div class="stats-panel">
+                        <div class="stat-line">
+                            <span class="stat-label">Afstand gereden:</span>
+                            <span class="stat-value" id="statTrackedDistance">0 km</span>
+                        </div>
+                        <div class="stat-line">
+                            <span class="stat-label">Snelheid:</span>
+                            <span class="stat-value" id="statSpeed">0 km/h</span>
+                        </div>
+                        <div class="stat-line">
+                            <span class="stat-label">Tijd:</span>
+                            <span class="stat-value" id="statTime">00:00</span>
+                        </div>
+                        <div class="stat-line">
+                            <span class="stat-label">Afwijking:</span>
+                            <span class="stat-value" id="statDeviation">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>Status</h3>
+                    <div id="gpsStatus" style="padding: 0.75rem; background: rgba(34, 211, 167, 0.1); border: 1px solid var(--accent-teal); border-radius: 4px; font-size: 0.9rem;">
+                        GPS inactive
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="content">
+            <div id="planning" class="tab-content active">
+                <div id="mapDesktop"></div>
+            </div>
+            <div id="tracking" class="tab-content">
+                <div id="mapMobile"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals / Dialogs -->
+    <div id="tripListModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:1000; align-items:center; justify-content:center;">
+        <div style="background:var(--bg-card); border:1px solid var(--accent-gold); border-radius:8px; padding:2rem; max-width:400px; width:90%;">
+            <h2 style="font-family:var(--font-serif); color:var(--accent-gold); margin-bottom:1rem;">Trips laden</h2>
+            <div id="tripList" style="max-height:300px; overflow-y:auto; margin-bottom:1rem;"></div>
+            <button class="primary" id="btnCloseTripModal" style="width:100%;">Sluiten</button>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-draw/1.0.4/leaflet.draw.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+
+    <script>
+        const appState = {
+            planningRoute: null,
+            trackedRoute: null,
+            gpsTracking: false,
+            mapDesktop: null,
+            mapMobile: null,
+            drawnItems: null,
+            zandwegenLayer: null,
+            gpsMarker: null,
+            gpsTrail: [],
+            startTime: null,
+        };
+
+        window.addEventListener('DOMContentLoaded', function() {
+            initMaps();
+            setupEventListeners();
+        });
+
+        function initMaps() {
+            appState.mapDesktop = L.map('mapDesktop').setView([52.1326, 5.2913], 7);
+            appState.mapMobile = L.map('mapMobile').setView([52.1326, 5.2913], 7);
+
+            const osmTiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap',
+                maxZoom: 19,
+            });
+
+            const satelliteTiles = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: '© Esri',
+                maxZoom: 19,
+            });
+
+            const baseLayers = {
+                'OpenStreetMap': osmTiles,
+                'Satellite': satelliteTiles,
+            };
+
+            osmTiles.addTo(appState.mapDesktop);
+            osmTiles.addTo(appState.mapMobile);
+
+            L.control.layers(baseLayers, {}, { position: 'topright', collapsed: true }).addTo(appState.mapDesktop);
+            L.control.layers(baseLayers, {}, { position: 'topright', collapsed: true }).addTo(appState.mapMobile);
+
+            appState.zandwegenLayer = L.featureGroup().addTo(appState.mapDesktop);
+            appState.zandwegenLayer.addTo(appState.mapMobile);
+
+            appState.drawnItems = new L.FeatureGroup();
+            appState.mapDesktop.addLayer(appState.drawnItems);
+
+            const drawControl = new L.Control.Draw({
+                position: 'topleft',
+                draw: {
+                    polygon: false,
+                    rectangle: false,
+                    circle: false,
+                    marker: false,
+                    polyline: { shapeOptions: { color: '#FF6B35', weight: 4, opacity: 0.8 } },
+                    circlemarker: false,
+                },
+                edit: { featureGroup: appState.drawnItems, remove: true },
+            });
+            appState.mapDesktop.addControl(drawControl);
+
+            appState.mapDesktop.on('draw:created', function(e) {
+                if (e.layerType === 'polyline') {
+                    appState.drawnItems.addLayer(e.layer);
+                    appState.planningRoute = e.layer.toGeoJSON();
+                    updateRouteStats();
+                }
+            });
+
+            appState.mapDesktop.on('draw:edited', function(e) {
+                e.layers.eachLayer(function(layer) {
+                    if (layer instanceof L.Polyline && !(layer instanceof L.Polygon)) {
+                        appState.planningRoute = layer.toGeoJSON();
+                        updateRouteStats();
+                    }
+                });
+            });
+
+            appState.mapDesktop.on('draw:deleted', function(e) {
+                appState.planningRoute = null;
+                updateRouteStats();
+            });
+        }
+
+        function updateRouteStats() {
+            if (!appState.planningRoute) {
+                document.getElementById('statRouteDistance').textContent = '0 km';
+                document.getElementById('statRoutePoints').textContent = '0';
+                return;
+            }
+
+            try {
+                const length = turf.length(appState.planningRoute, { units: 'kilometers' });
+                const coords = appState.planningRoute.geometry.coordinates;
+                document.getElementById('statRouteDistance').textContent = length.toFixed(2) + ' km';
+                document.getElementById('statRoutePoints').textContent = coords.length;
+            } catch (e) {
+                console.error('Error:', e);
+            }
+        }
+
+        function setupEventListeners() {
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    switchTab(this.getAttribute('data-tab'));
+                });
+            });
+
+            document.getElementById('btnDrawRoute').addEventListener('click', function() {
+                alert('Teken een route op de kaart met de tekentools linksboven');
+            });
+
+            document.getElementById('btnClearRoute').addEventListener('click', function() {
+                appState.drawnItems.clearLayers();
+                appState.planningRoute = null;
+                updateRouteStats();
+            });
+
+            document.getElementById('btnUpload').addEventListener('click', function() {
+                document.getElementById('fileUpload').click();
+            });
+
+            document.getElementById('fileUpload').addEventListener('change', function(e) {
+                handleFileUpload(e);
+            });
+
+            document.getElementById('btnSaveTrip').addEventListener('click', saveTrip);
+            document.getElementById('btnLoadTrip').addEventListener('click', showLoadDialog);
+            document.getElementById('btnExportGPX').addEventListener('click', exportGPX);
+            document.getElementById('btnCloseTripModal').addEventListener('click', function() {
+                document.getElementById('tripListModal').style.display = 'none';
+            });
+
+            document.getElementById('btnStartTracking').addEventListener('click', startTracking);
+            document.getElementById('btnStopTracking').addEventListener('click', stopTracking);
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.sidebar-content').forEach(s => s.style.display = 'none');
+
+            document.getElementById(tab).classList.add('active');
+            document.querySelector('[data-tab="' + tab + '"]').classList.add('active');
+            document.getElementById('sidebar-' + tab).style.display = 'block';
+
+            setTimeout(() => {
+                appState.mapDesktop.invalidateSize();
+                appState.mapMobile.invalidateSize();
+            }, 100);
+        }
+
+        function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    let geoJson;
+                    if (file.name.endsWith('.gpx')) {
+                        alert('Converteer GPX via https://github.com/tmcw/togeojson');
+                        return;
+                    } else {
+                        geoJson = JSON.parse(event.target.result);
+                    }
+
+                    L.geoJSON(geoJson, {
+                        style: { color: '#22D3A7', weight: 3, opacity: 0.7 },
+                        onEachFeature: function(feature, layer) {
+                            appState.zandwegenLayer.addLayer(layer);
+                        },
+                    });
+                } catch (err) {
+                    alert('Fout: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function saveTrip() {
+            if (!appState.planningRoute) {
+                alert('Teken eerst een route');
+                return;
+            }
+
+            const tripName = prompt('Trip naam:', new Date().toLocaleDateString('nl-NL'));
+            if (!tripName) return;
+
+            const trips = JSON.parse(localStorage.getItem('offroad_trips') || '{}');
+            trips[tripName] = {
+                route: appState.planningRoute,
+                timestamp: new Date().toISOString(),
+            };
+            localStorage.setItem('offroad_trips', JSON.stringify(trips));
+            alert('Trip opgeslagen: ' + tripName);
+        }
+
+        function showLoadDialog() {
+            const trips = JSON.parse(localStorage.getItem('offroad_trips') || '{}');
+            const tripList = document.getElementById('tripList');
+            tripList.textContent = '';
+
+            if (Object.keys(trips).length === 0) {
+                const p = document.createElement('p');
+                p.textContent = 'Geen trips opgeslagen';
+                p.style.color = 'var(--text-secondary)';
+                tripList.appendChild(p);
+            } else {
+                Object.entries(trips).forEach(([name, trip]) => {
+                    const div = document.createElement('div');
+                    div.style.cssText = 'padding:0.5rem; border:1px solid var(--accent-gold); border-radius:4px; margin-bottom:0.5rem; cursor:pointer;';
+                    div.textContent = name + ' (' + new Date(trip.timestamp).toLocaleDateString('nl-NL') + ')';
+                    div.addEventListener('click', function() {
+                        loadTrip(name, trip);
+                        document.getElementById('tripListModal').style.display = 'none';
+                    });
+                    tripList.appendChild(div);
+                });
+            }
+
+            document.getElementById('tripListModal').style.display = 'flex';
+        }
+
+        function loadTrip(name, trip) {
+            appState.planningRoute = trip.route;
+            appState.drawnItems.clearLayers();
+            L.geoJSON(trip.route, {
+                style: { color: '#FF6B35', weight: 4, opacity: 0.8 },
+                onEachFeature: function(feature, layer) {
+                    appState.drawnItems.addLayer(layer);
+                },
+            });
+            updateRouteStats();
+            alert('Trip geladen: ' + name);
+        }
+
+        function exportGPX() {
+            if (!appState.planningRoute) {
+                alert('Geen route om te exporteren');
+                return;
+            }
+
+            const coords = appState.planningRoute.geometry.coordinates;
+            const trkpts = coords.map(([lng, lat]) =>
+                `        <trkpt lat="${lat}" lon="${lng}"></trkpt>`
+            ).join('\n');
+
+            const now = new Date().toISOString();
+            const gpxContent = `<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Off-road Navigator" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>Quad Route</name>
+    <time>${now}</time>
+  </metadata>
+  <trk>
+    <name>Quad Route ${now.slice(0,10)}</name>
+    <trkseg>
+${trkpts}
+    </trkseg>
+  </trk>
+</gpx>`;
+
+            const blob = new Blob([gpxContent], { type: 'application/gpx+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'quad-route-' + now.slice(0,10) + '.gpx';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function startTracking() {
+            if (!navigator.geolocation) {
+                alert('GPS niet beschikbaar op dit device');
+                return;
+            }
+
+            appState.gpsTracking = true;
+            appState.startTime = Date.now();
+            appState.gpsTrail = [];
+            appState.gpsMarker = null;
+            appState.trackLine = null;
+
+            // Toon geplande route op tracking kaart
+            appState.mapMobile.eachLayer(layer => {
+                if (layer._offroadType) appState.mapMobile.removeLayer(layer);
+            });
+
+            if (appState.planningRoute) {
+                const planLayer = L.geoJSON(appState.planningRoute, {
+                    style: { color: '#E8A838', weight: 4, opacity: 0.6, dashArray: '8 6' },
+                });
+                planLayer._offroadType = 'plan';
+                planLayer.addTo(appState.mapMobile);
+                appState.planLayerMobile = planLayer;
+                appState.mapMobile.fitBounds(planLayer.getBounds(), { padding: [20, 20] });
+            }
+
+            document.getElementById('btnStartTracking').style.display = 'none';
+            document.getElementById('btnStopTracking').style.display = 'block';
+            document.getElementById('gpsStatus').textContent = '🟢 GPS actief';
+
+            const watchId = navigator.geolocation.watchPosition(
+                function(position) {
+                    const { latitude, longitude } = position.coords;
+                    const speed = position.coords.speed || 0;
+
+                    appState.gpsTrail.push([longitude, latitude]);
+
+                    // GPS positie marker
+                    if (!appState.gpsMarker) {
+                        appState.gpsMarker = L.circleMarker([latitude, longitude], {
+                            radius: 10,
+                            fillColor: '#22D3A7',
+                            color: '#0B1120',
+                            weight: 2,
+                            opacity: 1,
+                            fillOpacity: 0.95,
+                        });
+                        appState.gpsMarker._offroadType = 'gps';
+                        appState.gpsMarker.addTo(appState.mapMobile);
+                    } else {
+                        appState.gpsMarker.setLatLng([latitude, longitude]);
+                    }
+
+                    // GPS trail (oranje)
+                    if (appState.trackLine) {
+                        appState.mapMobile.removeLayer(appState.trackLine);
+                    }
+                    if (appState.gpsTrail.length > 1) {
+                        appState.trackLine = L.polyline(
+                            appState.gpsTrail.map(([lng, lat]) => [lat, lng]),
+                            { color: '#FF6B35', weight: 4, opacity: 0.85 }
+                        );
+                        appState.trackLine._offroadType = 'track';
+                        appState.trackLine.addTo(appState.mapMobile);
+                    }
+
+                    // Afwijking berekenen
+                    const deviation = calcDeviation(longitude, latitude);
+
+                    updateTrackingStats(speed, deviation);
+                    appState.mapMobile.panTo([latitude, longitude], { animate: true });
+                },
+                function(err) {
+                    document.getElementById('gpsStatus').textContent = '🔴 GPS fout: ' + (err.code === 1 ? 'geen toegang' : 'signaal verloren');
+                },
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+            );
+
+            appState.trackingWatchId = watchId;
+        }
+
+        function calcDeviation(longitude, latitude) {
+            if (!appState.planningRoute || typeof turf === 'undefined') return null;
+            try {
+                const currentPoint = turf.point([longitude, latitude]);
+                const nearest = turf.nearestPointOnLine(appState.planningRoute, currentPoint);
+                return turf.distance(currentPoint, nearest, { units: 'meters' });
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function stopTracking() {
+            appState.gpsTracking = false;
+            if (appState.trackingWatchId) {
+                navigator.geolocation.clearWatch(appState.trackingWatchId);
+            }
+
+            document.getElementById('btnStartTracking').style.display = 'block';
+            document.getElementById('btnStopTracking').style.display = 'none';
+            document.getElementById('gpsStatus').textContent = '⚫ GPS gestopt';
+
+            if (appState.gpsTrail.length > 0) {
+                appState.trackedRoute = {
+                    type: 'Feature',
+                    geometry: { type: 'LineString', coordinates: appState.gpsTrail },
+                };
+            }
+        }
+
+        function updateTrackingStats(speed, deviation) {
+            const elapsed = Math.floor((Date.now() - appState.startTime) / 1000);
+            const minutes = Math.floor(elapsed / 60);
+            const seconds = elapsed % 60;
+
+            document.getElementById('statSpeed').textContent = Math.round(speed * 3.6) + ' km/h';
+            document.getElementById('statTime').textContent =
+                String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+
+            if (appState.gpsTrail.length > 1) {
+                const lineString = turf.lineString(appState.gpsTrail);
+                const distance = turf.length(lineString, { units: 'kilometers' });
+                document.getElementById('statTrackedDistance').textContent = distance.toFixed(2) + ' km';
+            }
+
+            if (deviation !== null) {
+                const devEl = document.getElementById('statDeviation');
+                if (deviation < 50) {
+                    devEl.textContent = Math.round(deviation) + ' m ✓';
+                    devEl.style.color = 'var(--accent-teal)';
+                } else if (deviation < 200) {
+                    devEl.textContent = Math.round(deviation) + ' m ⚠';
+                    devEl.style.color = 'var(--accent-gold)';
+                } else {
+                    devEl.textContent = Math.round(deviation) + ' m ✗';
+                    devEl.style.color = 'var(--accent-orange)';
+                }
+            }
+        }
+    </script>
+
+    <!-- PWA Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js')
+                    .then(reg => console.log('SW registered'))
+                    .catch(err => console.log('SW registration failed:', err));
+            });
+        }
+    </script>
+</body>
+</html>
