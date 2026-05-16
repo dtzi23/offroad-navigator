@@ -215,6 +215,29 @@
             background: rgba(232, 168, 56, 0.1);
         }
 
+        /* Label als knop (voor file input) */
+        label.primary.btn-label {
+            display: block;
+            background: var(--accent-gold);
+            color: var(--primary);
+            border: none;
+            padding: 0.6rem 1rem;
+            border-radius: 4px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+            margin-bottom: 0.5rem;
+            text-align: center;
+            font-size: 1rem;
+            font-family: var(--font-sans);
+        }
+        label.primary.btn-label:hover {
+            background: var(--accent-orange);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+        }
+
         .stats-panel {
             background: rgba(232, 168, 56, 0.1);
             border: 1px solid var(--accent-gold);
@@ -391,8 +414,17 @@
 
                 <div class="sidebar-section">
                     <h3>Zandwegen importeren</h3>
+                    <label for="fileUpload" class="primary btn-label">📁 Upload GPX/GeoJSON</label>
                     <input type="file" id="fileUpload" accept=".gpx,.geojson,.json" style="display:none">
-                    <button class="primary" id="btnUpload">📁 Upload GPX/GeoJSON</button>
+                    <button class="secondary" id="btnToggleOverlay" style="display:none">👁 Overlay verbergen</button>
+                    <button class="secondary" id="btnFitOverlay" style="display:none">🎯 Zoom naar data</button>
+                    <div id="uploadStatus" style="font-size:0.78rem;color:#8B95A8;margin-top:6px;display:none;"></div>
+                    <div id="overlayLegend" style="display:none;margin-top:10px;font-size:0.75rem;line-height:1.8;">
+                        <span style="color:#80bd1d">●</span> Off-road geschikt (track/gravel)<br>
+                        <span style="color:#FFA500">●</span> Twijfel (path/footway)<br>
+                        <span style="color:#e33a3c">●</span> Verboden (access=no/private)<br>
+                        <span style="color:#8B95A8">●</span> Overige wegen
+                    </div>
                 </div>
 
                 <div class="sidebar-section">
@@ -478,6 +510,8 @@
     <!-- Leaflet JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.min.js"></script>
+    <!-- GPX → GeoJSON conversie -->
+    <script src="https://cdn.jsdelivr.net/npm/@tmcw/togeojson@5.8.1/dist/togeojson.umd.js"></script>
 
     <script>
         // Geo berekeningen (geen externe afhankelijkheid)
@@ -629,12 +663,30 @@
                 updateRouteStats();
             });
 
-            document.getElementById('btnUpload').addEventListener('click', function() {
-                document.getElementById('fileUpload').click();
-            });
-
             document.getElementById('fileUpload').addEventListener('change', function(e) {
                 handleFileUpload(e);
+            });
+
+            document.getElementById('btnToggleOverlay').addEventListener('click', toggleOverlay);
+            document.getElementById('btnFitOverlay').addEventListener('click', fitOverlay);
+
+            // Drag & drop op de kaart container
+            const mapContainer = document.getElementById('mapDesktop');
+            mapContainer.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'copy';
+                mapContainer.style.outline = '2px dashed #E8A838';
+            });
+            mapContainer.addEventListener('dragleave', function() {
+                mapContainer.style.outline = '';
+            });
+            mapContainer.addEventListener('drop', function(e) {
+                e.preventDefault();
+                mapContainer.style.outline = '';
+                const file = e.dataTransfer.files[0];
+                if (!file) return;
+                // Synthetisch event object aanmaken voor handleFileUpload
+                handleFileUpload({ target: { files: [file], value: '' } });
             });
 
             document.getElementById('btnSaveTrip').addEventListener('click', saveTrip);
@@ -663,32 +715,131 @@
             }, 100);
         }
 
+        // Kleurcodering per wegtype op basis van OSM properties
+        function offRoadStyle(feature) {
+            const p = feature.properties || {};
+            const hw = (p.highway || '').toLowerCase();
+            const surf = (p.surface || '').toLowerCase();
+            const access = (p.access || '').toLowerCase();
+
+            if (['no', 'private'].includes(access)) {
+                return { color: '#e33a3c', weight: 3, opacity: 0.85 };
+            }
+            const offRoadSurfaces = ['gravel','fine_gravel','compacted','dirt','ground','sand','mud','unpaved','pebblestone','grass'];
+            if (hw === 'track' || offRoadSurfaces.includes(surf)) {
+                return { color: '#80bd1d', weight: 3, opacity: 0.9 };
+            }
+            if (['path', 'footway', 'bridleway'].includes(hw)) {
+                return { color: '#FFA500', weight: 2, opacity: 0.8, dashArray: '6,4' };
+            }
+            return { color: '#8B95A8', weight: 1.5, opacity: 0.5 };
+        }
+
+        // GeoJSON normaliseren: altijd FeatureCollection met alleen lijnen teruggeven
+        function toLineFeatureCollection(raw) {
+            const lineTypes = ['LineString', 'MultiLineString'];
+            let features = [];
+
+            if (raw.type === 'FeatureCollection') {
+                features = (raw.features || []).filter(f =>
+                    f.geometry && lineTypes.includes(f.geometry.type)
+                );
+            } else if (raw.type === 'Feature') {
+                if (raw.geometry && lineTypes.includes(raw.geometry.type)) features = [raw];
+            } else if (lineTypes.includes(raw.type)) {
+                features = [{ type: 'Feature', geometry: raw, properties: {} }];
+            }
+
+            return { type: 'FeatureCollection', features };
+        }
+
+        function setUploadStatus(msg, isError) {
+            const el = document.getElementById('uploadStatus');
+            el.textContent = msg;
+            el.style.color = isError ? '#e33a3c' : '#22D3A7';
+            el.style.display = msg ? 'block' : 'none';
+        }
+
         function handleFileUpload(e) {
             const file = e.target.files[0];
             if (!file) return;
+            // Reset input zodat hetzelfde bestand opnieuw uploadbaar is
+            e.target.value = '';
 
             const reader = new FileReader();
             reader.onload = function(event) {
                 try {
                     let geoJson;
-                    if (file.name.endsWith('.gpx')) {
-                        alert('Converteer GPX via https://github.com/tmcw/togeojson');
-                        return;
+
+                    if (file.name.toLowerCase().endsWith('.gpx')) {
+                        // GPX → GeoJSON via togeojson
+                        if (typeof toGeoJSON === 'undefined') {
+                            setUploadStatus('❌ GPX conversie library niet geladen', true);
+                            return;
+                        }
+                        const parser = new DOMParser();
+                        const xmlDoc = parser.parseFromString(event.target.result, 'text/xml');
+                        geoJson = toGeoJSON.gpx(xmlDoc);
+                        console.log('[OffRoad] GPX geparsed:', geoJson.features.length, 'features');
                     } else {
                         geoJson = JSON.parse(event.target.result);
+                        console.log('[OffRoad] GeoJSON geladen, type:', geoJson.type);
                     }
 
-                    L.geoJSON(geoJson, {
-                        style: { color: '#22D3A7', weight: 3, opacity: 0.7 },
-                        onEachFeature: function(feature, layer) {
-                            appState.zandwegenLayer.addLayer(layer);
-                        },
+                    // Alleen lijnen renderen (filtert Overpass nodes/points eruit)
+                    const lineCollection = toLineFeatureCollection(geoJson);
+                    const count = lineCollection.features.length;
+
+                    if (count === 0) {
+                        setUploadStatus('⚠️ Geen lijngeometrie gevonden in dit bestand', true);
+                        return;
+                    }
+
+                    // Laag leegmaken en opnieuw vullen
+                    appState.zandwegenLayer.clearLayers();
+                    const leafletLayer = L.geoJSON(lineCollection, {
+                        style: offRoadStyle
                     });
+                    leafletLayer.eachLayer(l => appState.zandwegenLayer.addLayer(l));
+
+                    // Zoom naar de data
+                    const bounds = appState.zandwegenLayer.getBounds();
+                    if (bounds.isValid()) {
+                        appState.mapDesktop.fitBounds(bounds, { padding: [30, 30] });
+                    }
+
+                    // UI bijwerken
+                    setUploadStatus('✓ ' + count + ' wegen geladen uit ' + file.name, false);
+                    document.getElementById('btnToggleOverlay').style.display = 'block';
+                    document.getElementById('btnFitOverlay').style.display = 'block';
+                    document.getElementById('overlayLegend').style.display = 'block';
+
                 } catch (err) {
-                    alert('Fout: ' + err.message);
+                    console.error('[OffRoad] Upload fout:', err);
+                    setUploadStatus('❌ Parsefout: ' + err.message, true);
                 }
             };
             reader.readAsText(file);
+        }
+
+        function toggleOverlay() {
+            const btn = document.getElementById('btnToggleOverlay');
+            if (appState.mapDesktop.hasLayer(appState.zandwegenLayer)) {
+                appState.mapDesktop.removeLayer(appState.zandwegenLayer);
+                appState.mapMobile.removeLayer(appState.zandwegenLayer);
+                btn.textContent = '👁 Overlay tonen';
+            } else {
+                appState.zandwegenLayer.addTo(appState.mapDesktop);
+                appState.zandwegenLayer.addTo(appState.mapMobile);
+                btn.textContent = '👁 Overlay verbergen';
+            }
+        }
+
+        function fitOverlay() {
+            const bounds = appState.zandwegenLayer.getBounds();
+            if (bounds.isValid()) {
+                appState.mapDesktop.fitBounds(bounds, { padding: [30, 30] });
+            }
         }
 
         function saveTrip() {
