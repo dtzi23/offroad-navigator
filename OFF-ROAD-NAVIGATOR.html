@@ -446,6 +446,7 @@
                     <button class="secondary" id="btnSaveTrip">💾 Opslaan</button>
                     <button class="secondary" id="btnLoadTrip">📂 Laden</button>
                     <button class="secondary" id="btnExportGPX">⬇️ Export GPX</button>
+                    <button class="secondary" id="btnShareQR">📱 Deel via QR</button>
                 </div>
             </div>
 
@@ -507,11 +508,29 @@
         </div>
     </div>
 
+    <!-- QR Deel Modal -->
+    <div id="qrModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:1000; align-items:center; justify-content:center;">
+        <div style="background:var(--bg-card); border:1px solid var(--accent-gold); border-radius:12px; padding:2rem; max-width:360px; width:90%; text-align:center;">
+            <h2 style="font-family:var(--font-serif); color:var(--accent-gold); margin-bottom:0.5rem;">📱 Route naar telefoon</h2>
+            <p style="color:var(--text-secondary); font-size:0.82rem; margin-bottom:1.2rem;">Scan met je telefoon — route wordt direct geladen</p>
+            <div id="qrCanvas" style="background:#fff; padding:12px; border-radius:8px; display:inline-block; margin-bottom:1rem;"></div>
+            <p id="qrWarning" style="color:#FFA500; font-size:0.75rem; display:none; margin-bottom:0.5rem;"></p>
+            <p style="color:var(--text-secondary); font-size:0.72rem; margin-bottom:1.2rem;">Of kopieer de link:</p>
+            <div style="display:flex; gap:8px; margin-bottom:1.2rem;">
+                <input id="qrUrlInput" type="text" readonly style="flex:1; background:#0B1120; border:1px solid #2D4A3C; color:var(--text-primary); padding:6px 10px; border-radius:4px; font-size:0.72rem; font-family:var(--font-sans);">
+                <button onclick="copyQrUrl()" style="background:var(--primary); color:var(--accent-gold); border:none; padding:6px 12px; border-radius:4px; cursor:pointer; font-size:0.8rem;">📋</button>
+            </div>
+            <button class="primary" onclick="document.getElementById('qrModal').style.display='none'" style="width:100%;">Sluiten</button>
+        </div>
+    </div>
+
     <!-- Leaflet JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.min.js"></script>
     <!-- GPX → GeoJSON conversie -->
     <script src="https://cdn.jsdelivr.net/npm/@tmcw/togeojson@5.8.1/dist/togeojson.umd.js"></script>
+    <!-- QR code generatie -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 
     <script>
         // Geo berekeningen (geen externe afhankelijkheid)
@@ -559,6 +578,13 @@
         window.addEventListener('DOMContentLoaded', function() {
             initMaps();
             setupEventListeners();
+            // Route laden vanuit QR-code URL (?r=...)
+            const qrRoute = decodeRouteFromUrl();
+            if (qrRoute) {
+                loadTrip('QR-route', { route: qrRoute, timestamp: Date.now() });
+                // URL opschonen zonder herladen
+                window.history.replaceState({}, '', window.location.pathname);
+            }
         });
 
         function initMaps() {
@@ -692,6 +718,7 @@
             document.getElementById('btnSaveTrip').addEventListener('click', saveTrip);
             document.getElementById('btnLoadTrip').addEventListener('click', showLoadDialog);
             document.getElementById('btnExportGPX').addEventListener('click', exportGPX);
+            document.getElementById('btnShareQR').addEventListener('click', showQrModal);
             document.getElementById('btnCloseTripModal').addEventListener('click', function() {
                 document.getElementById('tripListModal').style.display = 'none';
             });
@@ -841,6 +868,79 @@
                 appState.mapDesktop.fitBounds(bounds, { padding: [30, 30] });
             }
         }
+
+        // ── QR Code: route delen naar telefoon ──────────────────────────────
+        function encodeRouteToUrl(route) {
+            const coords = route.geometry.coordinates.map(c => [
+                Math.round(c[1] * 1e5) / 1e5,
+                Math.round(c[0] * 1e5) / 1e5
+            ]);
+            const json = JSON.stringify(coords);
+            const b64 = btoa(unescape(encodeURIComponent(json)));
+            const base = window.location.href.split('?')[0];
+            return base + '?r=' + encodeURIComponent(b64);
+        }
+
+        function decodeRouteFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            const r = params.get('r');
+            if (!r) return null;
+            try {
+                const json = decodeURIComponent(escape(atob(decodeURIComponent(r))));
+                const coords = JSON.parse(json);
+                return {
+                    type: 'Feature',
+                    geometry: { type: 'LineString', coordinates: coords.map(c => [c[1], c[0]]) },
+                    properties: {}
+                };
+            } catch (e) {
+                console.warn('[OffRoad] QR route decode mislukt:', e);
+                return null;
+            }
+        }
+
+        function showQrModal() {
+            if (!appState.planningRoute) {
+                alert('Teken eerst een route om te delen');
+                return;
+            }
+            const url = encodeRouteToUrl(appState.planningRoute);
+            document.getElementById('qrUrlInput').value = url;
+
+            const warning = document.getElementById('qrWarning');
+            if (url.length > 2000) {
+                warning.textContent = '⚠️ Route heeft veel punten (' + url.length + ' tekens). QR werkt mogelijk niet op alle scanners.';
+                warning.style.display = 'block';
+            } else {
+                warning.style.display = 'none';
+            }
+
+            const canvas = document.getElementById('qrCanvas');
+            while (canvas.firstChild) canvas.removeChild(canvas.firstChild);
+            new QRCode(canvas, {
+                text: url,
+                width: 220,
+                height: 220,
+                colorDark: '#0B1120',
+                colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.M
+            });
+
+            document.getElementById('qrModal').style.display = 'flex';
+        }
+
+        function copyQrUrl() {
+            const val = document.getElementById('qrUrlInput').value;
+            const btn = document.querySelector('#qrModal button[onclick="copyQrUrl()"]');
+            navigator.clipboard.writeText(val).then(() => {
+                btn.textContent = '✓';
+                setTimeout(() => { btn.textContent = '📋'; }, 1500);
+            }).catch(() => {
+                document.getElementById('qrUrlInput').select();
+                document.execCommand('copy');
+            });
+        }
+        // ────────────────────────────────────────────────────────────────────
 
         function saveTrip() {
             if (!appState.planningRoute) {
