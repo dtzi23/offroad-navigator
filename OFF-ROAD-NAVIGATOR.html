@@ -767,16 +767,24 @@
             const surf = (p.surface || '').toLowerCase();
             const access = (p.access || '').toLowerCase();
 
+            // 1. Rood: verboden toegang
             if (['no', 'private'].includes(access)) {
                 return { color: '#e33a3c', weight: 3, opacity: 0.85 };
             }
-            const offRoadSurfaces = ['gravel','fine_gravel','compacted','dirt','ground','sand','mud','unpaved','pebblestone','grass'];
-            if (hw === 'track' || offRoadSurfaces.includes(surf)) {
+            // 2. Oranje: voetpaden — altijd twijfelachtig voor quad, ongeacht oppervlak
+            if (['path', 'footway', 'bridleway'].includes(hw)) {
+                return { color: '#FFA500', weight: 2, opacity: 0.85, dashArray: '6,4' };
+            }
+            // 3. Groen: vehicle tracks (altijd geschikt voor off-road)
+            if (hw === 'track') {
                 return { color: '#80bd1d', weight: 3, opacity: 0.9 };
             }
-            if (['path', 'footway', 'bridleway'].includes(hw)) {
-                return { color: '#FFA500', weight: 2, opacity: 0.8, dashArray: '6,4' };
+            // 4. Groen: ander wegtype met bevestigd off-road oppervlak
+            const offRoadSurfaces = ['gravel','fine_gravel','compacted','dirt','ground','sand','mud','unpaved','pebblestone','grass'];
+            if (offRoadSurfaces.includes(surf)) {
+                return { color: '#80bd1d', weight: 2.5, opacity: 0.8 };
             }
+            // 5. Grijs: overig
             return { color: '#8B95A8', weight: 1.5, opacity: 0.5 };
         }
 
