@@ -13,10 +13,10 @@ Quad trip planner en GPS tracker als Progressive Web App (PWA). Op de laptop pla
   *(Let op: GPS tracking vereist HTTPS — werkt alleen via Netlify URL)*
 
 **Online (GPS + alle functies):**
-`https://fascinating-gelato-e63afa.netlify.app`
+`https://dtzi23.github.io/offroad-navigator/`
 
 **Installeren op telefoon:**
-Ga naar de Netlify URL in Safari → Deel → Zet op beginscherm
+Ga naar de GitHub Pages URL in Safari → Deel → Zet op beginscherm
 
 ---
 
@@ -122,4 +122,4 @@ Als je via QR een route hebt geladen, zie je beide lijnen over elkaar — de gep
 | GPS | Browser Geolocation API (HTTPS vereist) |
 | PWA | Service worker (offroad-v4) + manifest.json |
 | Browser | Chrome of Safari (iOS 16+) |
-| Netlify URL | https://fascinating-gelato-e63afa.netlify.app |
+| GitHub Pages URL | https://dtzi23.github.io/offroad-navigator/ |
